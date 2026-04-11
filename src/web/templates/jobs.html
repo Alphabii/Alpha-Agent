@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% set active_page = "jobs" %}
+{% block title %}Jobs - Job Agent{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Jobs</h1>
+
+<!-- Filters -->
+<div class="filters">
+    <form method="GET" action="{{ url_for('jobs_list') }}" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <select name="status" onchange="this.form.submit()">
+            <option value="">All Statuses</option>
+            <option value="applied" {{ 'selected' if status_filter == 'applied' }}>Applied</option>
+            <option value="skipped" {{ 'selected' if status_filter == 'skipped' }}>Skipped</option>
+            <option value="failed" {{ 'selected' if status_filter == 'failed' }}>Failed</option>
+        </select>
+        <select name="platform" onchange="this.form.submit()">
+            <option value="">All Platforms</option>
+            <option value="freework" {{ 'selected' if platform_filter == 'freework' }}>Free-Work</option>
+        </select>
+        {% if status_filter or platform_filter %}
+        <a href="{{ url_for('jobs_list') }}" class="btn btn-outline btn-sm">Clear Filters</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Jobs Table -->
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Location</th>
+                    <th>Rate</th>
+                    <th>Platform</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('job_detail', job_id=job.id) }}">
+                            <strong>{{ job.title[:50] }}{% if job.title|length > 50 %}...{% endif %}</strong>
+                        </a>
+                        {% if job.remote %}<span class="skill-tag" style="font-size:10px;">Remote</span>{% endif %}
+                    </td>
+                    <td>{{ job.company or '—' }}</td>
+                    <td>{{ job.location or '—' }}</td>
+                    <td>
+                        {% if job.daily_rate_min or job.daily_rate_max %}
+                            {{ job.daily_rate_min }}-{{ job.daily_rate_max }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>{{ job.platform }}</td>
+                    <td>
+                        <div class="score-bar">
+                            <span>{{ job.relevance_score }}</span>
+                            <div class="bar">
+                                <div class="fill {{ 'high' if job.relevance_score >= 70 else ('mid' if job.relevance_score >= 40 else 'low') }}"
+                                     style="width: {{ job.relevance_score }}%"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" style="text-align:center; color: var(--text-muted); padding: 40px;">No jobs found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if jobs %}
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        {% if page > 1 %}
+        <a href="{{ url_for('jobs_list', status=status_filter, platform=platform_filter, page=page-1) }}" class="btn btn-outline btn-sm">Previous</a>
+        {% else %}
+        <span></span>
+        {% endif %}
+
+        <span style="color: var(--text-muted); font-size: 13px;">Page {{ page }}</span>
+
+        {% if has_more %}
+        <a href="{{ url_for('jobs_list', status=status_filter, platform=platform_filter, page=page+1) }}" class="btn btn-outline btn-sm">Next</a>
+        {% else %}
+        <span></span>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}Dashboard - Job Agent{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Dashboard</h1>
+
+<!-- Stats Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Total Jobs</div>
+        <div class="value accent" id="stat-total">{{ stats.total_jobs }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Applied</div>
+        <div class="value green" id="stat-applied">{{ stats.applied_jobs }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Skipped</div>
+        <div class="value yellow" id="stat-skipped">{{ stats.skipped_jobs }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Failed</div>
+        <div class="value red" id="stat-failed">{{ stats.failed_jobs }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Submitted</div>
+        <div class="value green" id="stat-submitted">{{ stats.submitted_applications }}</div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="charts-grid">
+    <div class="card chart-card">
+        <div class="card-title">Jobs by Status</div>
+        <div class="chart-container chart-container-sm">
+            <canvas id="chart-jobs-status"></canvas>
+        </div>
+    </div>
+    <div class="card chart-card">
+        <div class="card-title">Score Distribution</div>
+        <div class="chart-container">
+            <canvas id="chart-score-dist"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="charts-grid">
+    <div class="card chart-card">
+        <div class="card-title">Applications</div>
+        <div class="chart-container chart-container-sm">
+            <canvas id="chart-apps-status"></canvas>
+        </div>
+    </div>
+    <div class="card chart-card">
+        <div class="card-title">Top Skills Requested</div>
+        <div class="chart-container">
+            <canvas id="chart-top-skills"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 3 -->
+<div class="charts-grid">
+    <div class="card chart-card">
+        <div class="card-title">Contract Types</div>
+        <div class="chart-container chart-container-sm">
+            <canvas id="chart-contract-types"></canvas>
+        </div>
+    </div>
+    <div class="card chart-card">
+        <div class="card-title">Remote vs On-site</div>
+        <div class="chart-container chart-container-sm">
+            <canvas id="chart-remote"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Jobs -->
+<div class="card">
+    <div class="card-title">
+        Recent Jobs
+        <a href="{{ url_for('jobs_list') }}" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Platform</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in recent_jobs %}
+                <tr style="cursor:pointer" onclick="window.location='{{ url_for('job_detail', job_id=job.id) }}'">
+                    <td><strong>{{ job.title[:60] }}{% if job.title|length > 60 %}...{% endif %}</strong></td>
+                    <td>{{ job.company or '---' }}</td>
+                    <td>{{ job.platform }}</td>
+                    <td>
+                        <div class="score-bar">
+                            <span>{{ job.relevance_score }}</span>
+                            <div class="bar">
+                                <div class="fill {{ 'high' if job.relevance_score >= 70 else ('mid' if job.relevance_score >= 40 else 'low') }}"
+                                     style="width: {{ job.relevance_score }}%"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" style="text-align:center; color: var(--text-muted); padding: 40px;">No jobs yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+const COLORS = {
+    accent: '#6366f1', green: '#22c55e', yellow: '#eab308',
+    red: '#ef4444', blue: '#3b82f6', purple: '#a855f7',
+    orange: '#f97316', teal: '#14b8a6', pink: '#ec4899', gray: '#6b7280',
+};
+const PALETTE = [COLORS.accent, COLORS.green, COLORS.yellow, COLORS.red, COLORS.blue, COLORS.purple, COLORS.orange, COLORS.teal, COLORS.pink, COLORS.gray];
+
+// Status-specific colors
+const STATUS_COLORS = {
+    new: COLORS.blue, applied: COLORS.green, skipped: COLORS.yellow,
+    failed: COLORS.red, submitted: COLORS.green, draft: COLORS.gray,
+};
+
+Chart.defaults.color = '#8b8fa3';
+Chart.defaults.borderColor = '#2a2e3d';
+
+function doughnutOpts(pos) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: pos || 'bottom', labels: { padding: 16, usePointStyle: true } } },
+        cutout: '55%',
+    };
+}
+
+function mapColors(labels, fallback) {
+    return labels.map((l, i) => STATUS_COLORS[l] || fallback[i % fallback.length]);
+}
+
+// Load charts
+fetch('/api/charts')
+    .then(r => r.json())
+    .then(data => {
+        // Jobs by Status
+        const jobLabels = Object.keys(data.jobs_by_status);
+        new Chart(document.getElementById('chart-jobs-status'), {
+            type: 'doughnut',
+            data: {
+                labels: jobLabels,
+                datasets: [{ data: Object.values(data.jobs_by_status), backgroundColor: mapColors(jobLabels, PALETTE) }]
+            },
+            options: doughnutOpts(),
+        });
+
+        // Score Distribution
+        new Chart(document.getElementById('chart-score-dist'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(data.score_distribution),
+                datasets: [{
+                    label: 'Jobs',
+                    data: Object.values(data.score_distribution),
+                    backgroundColor: [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.blue, COLORS.green],
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            },
+        });
+
+        // Applications by Status
+        const appLabels = Object.keys(data.apps_by_status);
+        new Chart(document.getElementById('chart-apps-status'), {
+            type: 'doughnut',
+            data: {
+                labels: appLabels,
+                datasets: [{ data: Object.values(data.apps_by_status), backgroundColor: mapColors(appLabels, PALETTE) }]
+            },
+            options: doughnutOpts(),
+        });
+
+        // Top Skills
+        new Chart(document.getElementById('chart-top-skills'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(data.top_skills),
+                datasets: [{
+                    label: 'Jobs',
+                    data: Object.values(data.top_skills),
+                    backgroundColor: COLORS.accent,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            },
+        });
+
+        // Contract Types
+        new Chart(document.getElementById('chart-contract-types'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(data.contract_types),
+                datasets: [{ data: Object.values(data.contract_types), backgroundColor: PALETTE }]
+            },
+            options: doughnutOpts(),
+        });
+
+        // Remote vs On-site
+        new Chart(document.getElementById('chart-remote'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(data.remote),
+                datasets: [{ data: Object.values(data.remote), backgroundColor: [COLORS.green, COLORS.blue] }]
+            },
+            options: doughnutOpts(),
+        });
+    });
+
+// Poll for stats updates
+setInterval(refreshStats, 10000);
+refreshStats();
+
+function refreshStats() {
+    fetch('/api/stats')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('stat-total').textContent = data.stats.total_jobs;
+            document.getElementById('stat-new').textContent = data.stats.new_jobs;
+            document.getElementById('stat-applied').textContent = data.stats.applied_jobs;
+            document.getElementById('stat-skipped').textContent = data.stats.skipped_jobs;
+            document.getElementById('stat-failed').textContent = data.stats.failed_jobs;
+            document.getElementById('stat-submitted').textContent = data.stats.submitted_applications;
+
+        })
+        .catch(() => {});
+}
+</script>
+{% endblock %}

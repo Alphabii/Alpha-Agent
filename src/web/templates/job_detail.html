@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% set active_page = "jobs" %}
+{% block title %}{{ job.title }} - Job Agent{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('jobs_list') }}" style="color: var(--text-muted); font-size: 13px;">&larr; Back to Jobs</a>
+
+<div style="margin-top: 16px;">
+    <div class="detail-header">
+        <div>
+            <h1 class="page-title" style="margin-bottom: 4px;">{{ job.title }}</h1>
+            <div class="detail-meta">
+                <span>{{ job.company or 'Unknown Company' }}</span>
+                {% if job.location %}<span>{{ job.location }}</span>{% endif %}
+                {% if job.remote %}<span>Remote</span>{% endif %}
+                {% if job.daily_rate_min or job.daily_rate_max %}
+                <span>{{ job.daily_rate_min }}-{{ job.daily_rate_max }}/j</span>
+                {% endif %}
+                <span>{{ job.platform }}</span>
+            </div>
+        </div>
+        <div class="btn-group">
+            <span class="badge badge-{{ job.status }}" style="font-size: 13px; padding: 6px 12px;">{{ job.status }}</span>
+            <a href="{{ job.url }}" target="_blank" class="btn btn-outline btn-sm">Open on Platform</a>
+        </div>
+    </div>
+
+    <!-- Relevance Score -->
+    {% if job.relevance_score > 0 %}
+    <div class="card">
+        <div class="card-title">Relevance Score</div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="font-size: 36px; font-weight: 700; color: {{ 'var(--green)' if job.relevance_score >= 70 else ('var(--yellow)' if job.relevance_score >= 40 else 'var(--red)') }};">
+                {{ job.relevance_score }}/100
+            </div>
+            <div style="flex: 1;">
+                <div style="height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                    <div style="height: 100%; width: {{ job.relevance_score }}%; border-radius: 4px; background: {{ 'var(--green)' if job.relevance_score >= 70 else ('var(--yellow)' if job.relevance_score >= 40 else 'var(--red)') }};"></div>
+                </div>
+                {% if job.relevance_reason %}
+                <p style="margin-top: 8px; color: var(--text-muted); font-size: 14px;">{{ job.relevance_reason }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Skills -->
+    {% if job.skills %}
+    <div class="card">
+        <div class="card-title">Required Skills</div>
+        <div>
+            {% for skill in job.skills %}
+            <span class="skill-tag">{{ skill }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Job Description -->
+    {% if job.description %}
+    <div class="card">
+        <div class="card-title">Job Description</div>
+        <div class="detail-section">
+            <div class="content">{{ job.description | format_description }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Application -->
+    {% if application %}
+    <div class="card">
+        <div class="card-title">
+            Application
+            <span class="badge badge-{{ application.submission_status }}">{{ application.submission_status }}</span>
+        </div>
+
+        {% if application.proposal_message %}
+        <div class="detail-section">
+            <h3>Proposal Message</h3>
+            <div class="content">{{ application.proposal_message }}</div>
+        </div>
+        {% endif %}
+
+        {% if application.submitted_at %}
+        <p style="color: var(--text-muted); font-size: 13px; margin-top: 12px;">
+            Submitted at: {{ application.submitted_at }}
+        </p>
+        {% endif %}
+
+        {% if application.error_message %}
+        <p style="color: var(--red); font-size: 13px; margin-top: 8px;">
+            Error: {{ application.error_message }}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

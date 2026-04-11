@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% set active_page = "settings" %}
+{% block title %}Profile - Job Agent{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Profile</h1>
+
+<!-- Current Config Summary -->
+<div class="card">
+    <div class="card-title">Configuration</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <div>
+            <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Name</div>
+            <div>{{ settings.freelancer_name or 'Not set' }}</div>
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Title</div>
+            <div>{{ settings.freelancer_title or 'Not set' }}</div>
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Daily Rate (min)</div>
+            <div>{{ settings.daily_rate_min }}/day</div>
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Scan Interval</div>
+            <div>{{ settings.scan_interval_minutes }} min</div>
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Relevance Threshold</div>
+            <div>{{ settings.relevance_threshold }}/100</div>
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Remote Only</div>
+            <div>{{ 'Yes' if settings.remote_only else 'No' }}</div>
+        </div>
+    </div>
+    {% if settings.freelancer_skills %}
+    <div style="margin-top: 16px;">
+        <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Skills</div>
+        {% for skill in settings.freelancer_skills %}
+        <span class="skill-tag">{{ skill }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if settings.preferred_locations %}
+    <div style="margin-top: 12px;">
+        <div style="color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Locations</div>
+        {% for loc in settings.preferred_locations %}
+        <span class="skill-tag">{{ loc }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Profile (read-only) -->
+{% if profile_text %}
+<div class="card">
+    <div class="card-title">CV / Profile</div>
+    <div class="profile-content">{{ profile_text | format_profile }}</div>
+</div>
+{% endif %}
+{% endblock %}
