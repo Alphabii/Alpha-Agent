@@ -78,17 +78,18 @@ class Pipeline:
                 "min_rate": settings.daily_rate_min,
                 "contracts": ["freelance"],
             }
-            # If search_queries defined, run one query per term
-            if settings.search_queries:
-                filter_sets = []
-                for q in settings.search_queries:
-                    f = dict(base_filters)
-                    f["query"] = q
-                    filter_sets.append(f)
-            else:
-                filter_sets = [base_filters]
         else:
-            filter_sets = [filters]
+            base_filters = filters
+
+        # Use search_queries when no explicit query was provided
+        if "query" not in base_filters and settings.search_queries:
+            filter_sets = []
+            for q in settings.search_queries:
+                f = dict(base_filters)
+                f["query"] = q
+                filter_sets.append(f)
+        else:
+            filter_sets = [base_filters]
 
         for scraper in scrapers:
             platform = scraper.platform_name
@@ -133,6 +134,16 @@ class Pipeline:
             applied = self._process_job(job)
             if applied:
                 total_applied += 1
+
+        # Retry scored jobs that have draft applications (failed on previous attempt)
+        scored_jobs = get_jobs(status="scored")
+        for job in scored_jobs:
+            app = get_application_for_job(job.id)
+            if app and app.submission_status == "draft" and app.proposal_message:
+                logger.info(f"Retrying apply for scored job: '{job.title}'")
+                submitted = self._submit(job, app, app.id)
+                if submitted:
+                    total_applied += 1
 
         return {"new_jobs": total_new, "applied": total_applied}
 

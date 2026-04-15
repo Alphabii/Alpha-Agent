@@ -6,6 +6,30 @@ from playwright.sync_api import BrowserContext, Page, sync_playwright
 from src.config import settings
 from loguru import logger
 
+# Anti-detection: Chromium args to mask headless/automation signals
+STEALTH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-infobars",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+]
+
+# Stealth JS: override navigator properties that reveal automation
+STEALTH_JS = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'en-US', 'en'] });
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+window.chrome = { runtime: {} };
+"""
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
 
 class BrowserManager:
     """Manages persistent Playwright browser contexts per platform."""
@@ -44,19 +68,28 @@ class BrowserManager:
         context = self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
             headless=headless,
+            channel="chrome",
+            args=STEALTH_ARGS,
             viewport={"width": 1280, "height": 800},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
-            ),
+            user_agent=USER_AGENT,
             locale="fr-FR",
             timezone_id="Europe/Paris",
+            ignore_default_args=["--enable-automation"],
         )
+
+        # Inject stealth scripts into every new page
+        context.add_init_script(STEALTH_JS)
 
         self._contexts[platform] = context
         logger.info(f"Created browser context for {platform}")
         return context
+
+    def close_context(self, platform: str):
+        """Close a specific platform's browser context."""
+        if platform in self._contexts:
+            self._contexts[platform].close()
+            del self._contexts[platform]
+            logger.debug(f"Closed browser context: {platform}")
 
     def new_page(self, platform: str, headless: bool = True) -> Page:
         """Get a new page in the platform's browser context."""

@@ -187,5 +187,38 @@ def login(
     typer.echo(f"Session saved for {platform}.")
 
 
+@app.command()
+def extract_cookies(
+    platform: str = typer.Argument(default="freework", help="Platform to extract cookies from"),
+):
+    """Extract auth cookies from a saved browser session for .env injection."""
+    from src.utils.browser import browser_manager
+
+    browser_manager.start()
+    ctx = browser_manager.get_context(platform, headless=True)
+
+    cookie_names = {
+        "freework": ["jwt_hp", "jwt_s", "refresh_token"],
+    }
+    target_cookies = cookie_names.get(platform, [])
+    urls = {"freework": "https://www.free-work.com"}
+    all_cookies = ctx.cookies([urls.get(platform, "")])
+
+    typer.echo(f"\n=== {platform} auth cookies ===")
+    found = False
+    for c in all_cookies:
+        if c["name"] in target_cookies:
+            env_key = f"{platform.upper()}_{c['name'].upper()}"
+            typer.echo(f"{env_key}={c['value']}")
+            found = True
+
+    if not found:
+        typer.echo("No auth cookies found. Run 'login' first to create a session.")
+    else:
+        typer.echo("\nCopy the values above into your .env file.")
+
+    browser_manager.stop()
+
+
 if __name__ == "__main__":
     app()

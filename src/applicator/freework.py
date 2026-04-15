@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+
+import requests
 from loguru import logger
 from playwright.sync_api import Page
 
@@ -27,6 +29,47 @@ class FreeWorkApplicator(PlatformApplicator):
     platform_name = "freework"
     last_apply_result: ApplyResult = None
     LOGIN_URL = "https://www.free-work.com/fr/tech-it/login"
+    _cookies_injected: bool = False
+
+    def _inject_cookies(self, context) -> bool:
+        """Inject Freework auth cookies from config into the browser context.
+
+        Returns True if cookies were injected, False if not configured.
+        """
+        if not settings.freework_jwt_hp or not settings.freework_jwt_s:
+            return False
+
+        cookies = [
+            {
+                "name": "jwt_hp",
+                "value": settings.freework_jwt_hp,
+                "domain": "www.free-work.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": False,
+            },
+            {
+                "name": "jwt_s",
+                "value": settings.freework_jwt_s,
+                "domain": "www.free-work.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+            },
+        ]
+        if settings.freework_refresh_token:
+            cookies.append({
+                "name": "refresh_token",
+                "value": settings.freework_refresh_token,
+                "domain": "www.free-work.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+            })
+
+        context.add_cookies(cookies)
+        logger.info("Injected Freework auth cookies from config")
+        return True
 
     def _is_logged_in(self, page: Page) -> bool:
         """Check if the current page shows a logged-in state."""
@@ -38,64 +81,80 @@ class FreeWorkApplicator(PlatformApplicator):
                 return False
         return True
 
-    def _auto_login(self, page: Page) -> bool:
-        """Automatically log in to Free-Work using credentials from .env."""
+    def _auto_login(self, page) -> bool:
+        """Log in to Free-Work via the REST API and inject cookies into the browser.
+
+        Freework blocks Playwright from rendering the login form (even in
+        visible mode), so we call the login API directly with requests,
+        then inject the returned auth cookies into the browser context.
+        """
         if not settings.freework_email or not settings.freework_password:
             logger.warning("Freework credentials not set in .env — cannot auto-login")
             return False
 
         try:
-            logger.info("Session expired — auto-logging in to Free-Work...")
-            page.goto(self.LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
-            human_delay(2.0, 3.0)
-            self._dismiss_popups(page)
+            logger.info("Logging in to Free-Work via API...")
 
-            # Fill email
-            email_input = page.query_selector("input[type='email'], input[name='email'], #email")
-            if not email_input:
-                email_input = page.query_selector("input[type='text']")
-            if not email_input:
-                logger.error("Could not find email input on login page")
+            resp = requests.post(
+                "https://www.free-work.com/api/login",
+                json={
+                    "email": settings.freework_email,
+                    "password": settings.freework_password,
+                },
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/131.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "application/json",
+                    "Origin": "https://www.free-work.com",
+                    "Referer": "https://www.free-work.com/fr/tech-it/login",
+                },
+                timeout=15,
+            )
+
+            if resp.status_code not in (200, 204):
+                logger.error(f"Freework API login failed: HTTP {resp.status_code}")
                 return False
 
-            email_input.click()
-            human_delay(0.3, 0.5)
-            email_input.fill(settings.freework_email)
-            human_delay(0.5, 1.0)
+            # Extract auth cookies from response
+            cookies = resp.cookies
+            jwt_hp = cookies.get("jwt_hp", "")
+            jwt_s = cookies.get("jwt_s", "")
+            refresh_token = cookies.get("refresh_token", "")
 
-            # Fill password
-            password_input = page.query_selector("input[type='password']")
-            if not password_input:
-                logger.error("Could not find password input on login page")
+            if not jwt_hp or not jwt_s:
+                logger.error("Freework API login returned no auth cookies")
                 return False
 
-            password_input.click()
-            human_delay(0.3, 0.5)
-            password_input.fill(settings.freework_password)
-            human_delay(0.5, 1.0)
+            logger.info("Freework API login successful — injecting cookies into browser")
 
-            # Click login button
-            login_btn = page.query_selector("button[type='submit']")
-            if not login_btn:
-                login_btn = page.query_selector("button:has-text('Connexion')")
-            if not login_btn:
-                logger.error("Could not find login button")
-                return False
+            # Inject cookies into the browser context
+            ctx = browser_manager.get_context(self.platform_name)
+            cookie_list = [
+                {"name": "jwt_hp", "value": jwt_hp, "domain": "www.free-work.com", "path": "/", "secure": True, "httpOnly": False},
+                {"name": "jwt_s", "value": jwt_s, "domain": "www.free-work.com", "path": "/", "secure": True, "httpOnly": True},
+            ]
+            if refresh_token:
+                cookie_list.append({"name": "refresh_token", "value": refresh_token, "domain": "www.free-work.com", "path": "/", "secure": True, "httpOnly": True})
 
-            login_btn.click()
-            human_delay(4.0, 6.0)
+            ctx.add_cookies(cookie_list)
+            self._cookies_injected = True
 
-            # Verify login succeeded
-            body = page.inner_text("body").lower()
-            if "mot de passe incorrect" in body or "identifiants invalides" in body:
-                logger.error("Freework login failed — invalid credentials")
-                return False
+            # Log cookies for .env backup
+            logger.info("=== Copy these to .env for cookie injection backup ===")
+            logger.info(f"FREEWORK_JWT_HP={jwt_hp}")
+            logger.info(f"FREEWORK_JWT_S={jwt_s}")
+            if refresh_token:
+                logger.info(f"FREEWORK_REFRESH_TOKEN={refresh_token}")
+            logger.info("=== End of cookie values ===")
 
-            logger.info("Auto-login to Free-Work successful")
             return True
 
         except Exception as e:
-            logger.error(f"Auto-login failed: {e}")
+            logger.error(f"Auto-login via API failed: {e}")
             return False
 
     def submit_application(self, job: JobRecord, application: ApplicationRecord) -> bool:
@@ -111,15 +170,38 @@ class FreeWorkApplicator(PlatformApplicator):
 
             # Auto-login if session expired
             if not self._is_logged_in(page):
-                if not self._auto_login(page):
-                    self.last_apply_result = ApplyResult(
-                        success=False, application_result="login_failed"
-                    )
-                    return False
-                # Navigate back to the job page after login
-                page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
-                human_delay(3.0, 5.0)
-                self._dismiss_popups(page)
+                logger.info("Not logged in — attempting authentication")
+                page.close()
+                logged_in = False
+
+                # Try 1: inject cookies from .env config
+                if not self._cookies_injected and settings.freework_jwt_hp and settings.freework_jwt_s:
+                    ctx = browser_manager.get_context(self.platform_name)
+                    self._inject_cookies(ctx)
+                    self._cookies_injected = True
+                    page = browser_manager.new_page(self.platform_name)
+                    page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
+                    human_delay(3.0, 5.0)
+                    self._dismiss_popups(page)
+                    if self._is_logged_in(page):
+                        logger.info("Cookie injection login successful")
+                        logged_in = True
+                    else:
+                        logger.warning("Injected cookies expired — falling back to API login")
+                        page.close()
+
+                # Try 2: API login (get fresh cookies via HTTP)
+                if not logged_in:
+                    if not self._auto_login(None):
+                        self.last_apply_result = ApplyResult(
+                            success=False, application_result="login_failed"
+                        )
+                        return False
+                    page = browser_manager.new_page(self.platform_name)
+                    page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
+                    human_delay(3.0, 5.0)
+                    self._dismiss_popups(page)
+
 
             # Click the "Postuler" button to reveal the apply form
             postuler = page.query_selector("button:has-text('Postuler')")
@@ -145,9 +227,9 @@ class FreeWorkApplicator(PlatformApplicator):
             # Check which flow we got
             textarea = page.query_selector("#job-application-message")
             if not textarea or not textarea.is_visible():
-                # Maybe session expired mid-page — try auto-login and retry
+                # Maybe session expired mid-page — try API login and retry
                 page.screenshot(path=str(settings.project_root / "logs" / "debug_after_postuler.png"))
-                if self._auto_login(page):
+                if self._auto_login(None):
                     page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
                     human_delay(3.0, 5.0)
                     self._dismiss_popups(page)
@@ -263,6 +345,21 @@ class FreeWorkApplicator(PlatformApplicator):
             logger.debug(f"Verification check failed: {e}")
 
         return False
+
+    def _log_session_cookies(self):
+        """After a successful login, log the auth cookies so the user can copy them to .env."""
+        try:
+            ctx = browser_manager.get_context(self.platform_name)
+            cookies = ctx.cookies(["https://www.free-work.com"])
+            auth_cookies = {c["name"]: c["value"] for c in cookies if c["name"] in ("jwt_hp", "jwt_s", "refresh_token")}
+            if auth_cookies:
+                logger.info("=== Copy these to .env for headless cookie injection ===")
+                for name, value in auth_cookies.items():
+                    env_key = f"FREEWORK_{name.upper()}"
+                    logger.info(f"{env_key}={value}")
+                logger.info("=== End of cookie values ===")
+        except Exception as e:
+            logger.debug(f"Could not extract session cookies: {e}")
 
     def _dismiss_popups(self, page: Page):
         for sel in [

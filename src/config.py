@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Freework
     freework_email: str = ""
     freework_password: str = ""
+    freework_jwt_hp: str = ""
+    freework_jwt_s: str = ""
+    freework_refresh_token: str = ""
 
     # Freelancer profile
     freelancer_name: str = ""
