@@ -11,3 +11,5 @@ twilio>=9.0.0
 flask>=3.0.0
 sqlitecloud>=0.0.60
 requests>=2.31.0
+gunicorn>=21.2.0
+gspread>=6.0.0

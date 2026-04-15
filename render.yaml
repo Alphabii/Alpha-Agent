@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: alpha-agent
+    runtime: python
+    buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps
+    startCommand: gunicorn src.web.app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      - key: AI_PROVIDER
+        sync: false
+      - key: VERTEX_PROJECT_ID
+        sync: false
+      - key: VERTEX_LOCATION
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_PATH
+        sync: false
+      - key: FREEWORK_EMAIL
+        sync: false
+      - key: FREEWORK_PASSWORD
+        sync: false
+      - key: SQLITE_CLOUD_URL
+        sync: false
+      - key: FREELANCER_NAME
+        sync: false
+      - key: FREELANCER_SKILLS
+        sync: false
+      - key: DAILY_RATE_MIN
+        sync: false
+      - key: SEARCH_QUERIES
+        sync: false
+      - key: RELEVANCE_THRESHOLD
+        sync: false

@@ -414,3 +414,7 @@ def start_web(host: str = "127.0.0.1", port: int = 5050, debug: bool = False):
     init_db()
     logger.info(f"Web dashboard starting at http://{host}:{port}")
     app.run(host=host, port=port, debug=debug)
+
+
+# Initialize DB when loaded by gunicorn (gunicorn src.web.app:app)
+init_db()

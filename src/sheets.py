@@ -24,12 +24,11 @@ SCOPES = [
 ]
 
 SHEET_ID = "1kyI4pcGEhySmHSPAeiAcntR8AG32BmWwju0B10EZGKo"
-CREDS_PATH = Path(__file__).parent.parent / settings.google_service_account_path
 
 
 def _get_client():
     """Authenticate and return the gspread client."""
-    creds = Credentials.from_service_account_file(str(CREDS_PATH), scopes=SCOPES)
+    creds = settings.get_google_credentials(scopes=SCOPES)
     return gspread.authorize(creds)
 
 

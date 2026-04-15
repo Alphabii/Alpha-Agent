@@ -10,11 +10,8 @@ from src.utils.retry import retry
 
 def _init_vertex():
     import vertexai
-    from google.oauth2 import service_account
 
-    credentials = service_account.Credentials.from_service_account_file(
-        settings.google_service_account_path
-    )
+    credentials = settings.get_google_credentials()
     vertexai.init(
         project=settings.vertex_project_id,
         location=settings.vertex_location,

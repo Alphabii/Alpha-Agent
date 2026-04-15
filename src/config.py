@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     vertex_project_id: str = ""
     vertex_location: str = ""
     google_service_account_path: str = ""
+    google_service_account_json: str = ""  # JSON content as env var (for cloud deployment)
 
     # WhatsApp (Twilio)
     twilio_account_sid: str = ""
@@ -81,6 +82,23 @@ class Settings(BaseSettings):
         if self.profile_file.exists():
             return self.profile_file.read_text(encoding="utf-8")
         return ""
+
+    def get_google_credentials(self, scopes: list[str] | None = None):
+        """Get Google service account credentials from file or env var."""
+        from google.oauth2 import service_account
+        if self.google_service_account_json:
+            info = json.loads(self.google_service_account_json)
+            if scopes:
+                return service_account.Credentials.from_service_account_info(info, scopes=scopes)
+            return service_account.Credentials.from_service_account_info(info)
+        if self.google_service_account_path:
+            path = Path(self.google_service_account_path)
+            if not path.is_absolute():
+                path = self.project_root / path
+            if scopes:
+                return service_account.Credentials.from_service_account_file(str(path), scopes=scopes)
+            return service_account.Credentials.from_service_account_file(str(path))
+        return None
 
     def get_resume_path(self, language: str = "fr") -> Path | None:
         """Get the resume PDF path for a given language."""
