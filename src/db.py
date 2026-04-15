@@ -3,8 +3,15 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from loguru import logger
+
 from src.config import settings
 from src.models import ApplicationRecord, JobRecord, ScanStats, ScrapedJob
+
+try:
+    import sqlitecloud
+except ImportError:
+    sqlitecloud = None
 
 
 SCHEMA = """
@@ -57,13 +64,40 @@ CREATE TABLE IF NOT EXISTS scan_log (
 """
 
 
+def _use_cloud() -> bool:
+    return bool(settings.sqlite_cloud_url and sqlitecloud)
+
+
+def _dict_row_factory(cursor, row):
+    """Row factory that returns dict-like objects for both sqlite3 and sqlitecloud."""
+    columns = [col[0] for col in cursor.description]
+    return dict(zip(columns, row))
+
+
+class DictRow(dict):
+    """A dict that also supports index-based access like sqlite3.Row."""
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+
+def _dictrow_factory(cursor, row):
+    columns = [col[0] for col in cursor.description]
+    return DictRow(zip(columns, row))
+
+
 @contextmanager
 def get_db():
-    """Get a database connection with WAL mode."""
-    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(settings.db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    """Get a database connection (SQLite Cloud if configured, local fallback)."""
+    if _use_cloud():
+        conn = sqlitecloud.connect(settings.sqlite_cloud_url)
+        conn.row_factory = _dictrow_factory
+    else:
+        settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(settings.db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
     try:
         yield conn
         conn.commit()
@@ -76,8 +110,17 @@ def get_db():
 
 def init_db():
     """Create tables if they don't exist."""
-    with get_db() as conn:
-        conn.executescript(SCHEMA)
+    if _use_cloud():
+        logger.info("Using SQLite Cloud database")
+        with get_db() as conn:
+            for statement in SCHEMA.strip().split(";"):
+                statement = statement.strip()
+                if statement:
+                    conn.execute(statement)
+    else:
+        logger.info("Using local SQLite database")
+        with get_db() as conn:
+            conn.executescript(SCHEMA)
 
 
 def save_job(job: ScrapedJob) -> bool:
@@ -330,7 +373,7 @@ def get_chart_data() -> dict:
         }
 
 
-def _row_to_job(row: sqlite3.Row) -> JobRecord:
+def _row_to_job(row) -> JobRecord:
     """Convert a database row to a JobRecord."""
     return JobRecord(
         id=row["id"],

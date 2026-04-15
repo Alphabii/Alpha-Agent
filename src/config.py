@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     resume_fr: str = ""
     resume_en: str = ""
 
+    # Database
+    sqlite_cloud_url: str = ""
+
     # Scanning
     scan_interval_minutes: int = 30
     relevance_threshold: int = 70
